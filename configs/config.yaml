@@ -1,0 +1,152 @@
+# SubConverter Go 版本配置文件
+
+# 服务器配置
+server:
+  host: "0.0.0.0" # 监听地址
+  port: 25500 # 监听端口
+  read_timeout: "30s" # 读取超时
+  write_timeout: "30s" # 写入超时
+  max_connections: 1000 # 最大连接数
+
+# 日志配置
+log:
+  level: "info" # 日志级别: debug, info, warn, error
+  format: "text" # 日志格式: text, json
+  output: "stdout" # 输出: stdout, stderr, 文件路径
+  max_size: 100 # 日志文件最大大小(MB)
+  max_backups: 3 # 保留的日志文件数量
+  max_age: 28 # 日志文件保留天数
+
+# 缓存配置
+cache:
+  enable: true # 是否启用缓存
+  default_ttl: "10m" # 默认缓存时间
+  max_entries: 1000 # 最大缓存条目数
+  cleanup_time: "1m" # 清理间隔
+
+# 安全配置
+security:
+  access_token: "" # API 访问令牌（空值表示不验证）
+  rate_limit: 100 # 每分钟请求限制
+  cors_enabled: true # 是否启用 CORS
+  allowed_origins: # 允许的源域名
+    - "*"
+
+# 转换器配置
+converter:
+  default_config: "" # 默认配置文件
+  enable_rule_generator: true # 启用规则生成器
+  overwrite_original_rules: false # 覆盖原有规则
+  add_emoji: true # 添加 emoji
+  remove_emoji: false # 移除 emoji
+  append_proxy_type: false # 添加代理类型
+  filter_deprecated: true # 过滤废弃节点
+  sort_flag: false # 节点排序
+  clash_new_field_name: true # Clash 新字段名
+  clash_script: false # Clash 脚本支持
+  clash_classical_ruleset: false # Clash 经典规则集
+
+  # 路径设置
+  surge_ssr_path: "/usr/bin/ssr-local" # Surge SSR 路径
+  managed_config_prefix: "" # 托管配置前缀
+  quanx_dev_id: "" # QuanX 开发者 ID
+
+  # 样式设置
+  clash_proxies_style: "flow" # Clash 代理样式
+  clash_proxy_groups_style: "block" # Clash 代理组样式
+
+  # 特性开关
+  udp: true # UDP 支持
+  tfo: false # TCP Fast Open
+  skip_cert_verify: false # 跳过证书验证
+  tls13: false # TLS 1.3
+
+# 模板配置
+template:
+  base_dir: "templates" # 模板基础目录
+  extension: ".tpl" # 模板文件扩展名
+  auto_reload: true # 自动重载模板
+
+  # 全局变量
+  variables:
+    app_name: "SubConverter Go"
+    version: "1.0.0"
+
+  # 客户端模板
+  clients:
+    - name: "clash"
+      file: "clash/config.yaml"
+      type: "yaml"
+      enabled: true
+    - name: "surge"
+      file: "surge/config.conf"
+      type: "conf"
+      enabled: true
+    - name: "quantumult-x"
+      file: "quantumultx/config.conf"
+      type: "conf"
+      enabled: true
+    - name: "loon"
+      file: "loon/config.conf"
+      type: "conf"
+      enabled: true
+    - name: "singbox"
+      file: "singbox/config.json"
+      type: "json"
+      enabled: true
+
+# 规则配置
+rules:
+  # 节点过滤规则
+  node_filters:
+    - name: "默认包含过滤器"
+      type: "include"
+      patterns: [".*"]
+      regex: true
+      enabled: true
+
+    - name: "排除测试节点"
+      type: "exclude"
+      patterns: ["测试", "test", "Test"]
+      regex: false
+      enabled: true
+
+  # 重命名规则
+  rename:
+    - name: "简化地区名称"
+      pattern: "香港特别行政区"
+      replacement: "香港"
+      regex: false
+      enabled: true
+
+    - name: "标准化美国"
+      pattern: "United States"
+      replacement: "美国"
+      regex: false
+      enabled: true
+
+  # 地区分组规则
+  region_group:
+    - name: "香港节点"
+      regions: ["香港", "HK", "Hong Kong"]
+      patterns: ["香港", "HK", "hk", "Hong"]
+      emoji: true
+      enabled: true
+
+    - name: "美国节点"
+      regions: ["美国", "US", "United States"]
+      patterns: ["美国", "US", "us", "United", "America"]
+      emoji: true
+      enabled: true
+
+    - name: "日本节点"
+      regions: ["日本", "JP", "Japan"]
+      patterns: ["日本", "JP", "jp", "Japan", "Tokyo"]
+      emoji: true
+      enabled: true
+
+# 监控配置
+monitor:
+  enable: true # 启用监控
+  metrics_path: "/metrics" # 指标路径
+  health_path: "/health" # 健康检查路径

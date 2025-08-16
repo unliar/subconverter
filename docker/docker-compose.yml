@@ -1,0 +1,97 @@
+version: "3.8"
+
+services:
+  subconverter-go:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        VERSION: ${VERSION:-latest}
+        COMMIT: ${COMMIT:-unknown}
+        DATE: ${DATE:-unknown}
+    image: subconverter-go:${VERSION:-latest}
+    container_name: subconverter-go
+    ports:
+      - "${PORT:-25500}:25500"
+    volumes:
+      # 挂载配置文件（可选）
+      - ./config.yaml:/app/configs/config.yaml:ro
+      # 挂载自定义模板（可选）
+      - ../templates:/app/templates:ro
+      # 挂载自定义规则（可选）
+      - ../assets:/app/assets:ro
+    environment:
+      # 服务配置
+      - SC_SERVER_HOST=0.0.0.0
+      - SC_SERVER_PORT=25500
+      - SC_LOG_LEVEL=${LOG_LEVEL:-info}
+      - SC_LOG_FORMAT=${LOG_FORMAT:-text}
+      # 缓存配置
+      - SC_CACHE_ENABLE=${CACHE_ENABLE:-true}
+      - SC_CACHE_DEFAULT_TTL=${CACHE_TTL:-10m}
+      # 安全配置
+      - SC_ACCESS_TOKEN=${ACCESS_TOKEN:-}
+      - SC_RATE_LIMIT=${RATE_LIMIT:-100}
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:25500/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.subconverter.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.services.subconverter.loadbalancer.server.port=25500"
+    networks:
+      - subconverter-network
+
+  # 可选：添加 Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: subconverter-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - subconverter-network
+    profiles:
+      - with-redis
+
+  # 可选：添加 Nginx 反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: subconverter-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_SSL_PORT:-443}:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - subconverter-go
+    restart: unless-stopped
+    networks:
+      - subconverter-network
+    profiles:
+      - with-nginx
+
+volumes:
+  redis_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  subconverter-network:
+    driver: bridge
+    name: subconverter-network

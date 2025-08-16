@@ -1,0 +1,219 @@
+# golangci-lint 配置文件
+# 参考: https://github.com/golangci/golangci-lint
+
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+  skip-dirs:
+    - vendor
+    - testdata
+    - test/testdata
+  skip-files:
+    - ".*\\.pb\\.go$"
+    - ".*_generated\\.go$"
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true
+  sort-results: true
+
+linters-settings:
+  # 错误检查
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    exclude-functions:
+      - fmt.Print
+      - fmt.Println
+      - fmt.Printf
+
+  # 函数复杂度检查
+  gocyclo:
+    min-complexity: 15
+
+  # 函数长度检查
+  funlen:
+    lines: 100
+    statements: 60
+
+  # 认知复杂度
+  gocognit:
+    min-complexity: 20
+
+  # 行长度检查
+  lll:
+    line-length: 120
+
+  # 命名规范
+  revive:
+    rules:
+      - name: var-naming
+      - name: package-comments
+      - name: exported
+      - name: var-declaration
+      - name: blank-imports
+      - name: context-as-argument
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: if-return
+      - name: increment-decrement
+      - name: indent-error-flow
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: unreachable-code
+
+  # 未使用变量检查
+  unused:
+    check-exported: false
+
+  # 魔法数字检查
+  gomnd:
+    settings:
+      mnd:
+        checks:
+          - argument
+          - case
+          - condition
+          - operation
+          - return
+          - assign
+        ignored-numbers: 0,1,2,3
+        ignored-files: ".*_test.go"
+        ignored-functions: "make,len,cap,append"
+
+  # 导入顺序
+  goimports:
+    local-prefixes: subconverter-go
+
+  # 代码重复检查
+  dupl:
+    threshold: 100
+
+  # 安全检查
+  gosec:
+    excludes:
+      - G204 # 命令注入检查过于严格
+      - G304 # 文件路径检查过于严格
+
+  # 拼写检查
+  misspell:
+    locale: US
+    ignore-words:
+      - colour
+      - flavour
+
+linters:
+  enable:
+    # 默认启用的 linters
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+
+    # 额外启用的 linters
+    - asciicheck # 检查非 ASCII 字符
+    - bodyclose # 检查 HTTP body 关闭
+    - dupl # 代码重复检查
+    - durationcheck # 时间单位检查
+    - errorlint # 错误处理检查
+    - exhaustive # 枚举完整性检查
+    - exportloopref # 循环变量引用检查
+    - funlen # 函数长度检查
+    - gochecknoinits # 检查 init 函数
+    - gocognit # 认知复杂度检查
+    - goconst # 常量检查
+    - gocritic # 最全面的 Go 静态分析器
+    - gocyclo # 循环复杂度检查
+    - godot # 注释句号检查
+    - gofmt # 格式检查
+    - goimports # 导入检查
+    - gomnd # 魔法数字检查
+    - gomodguard # 模块依赖检查
+    - goprintffuncname # printf 函数命名检查
+    - gosec # 安全检查
+    - lll # 行长度检查
+    - makezero # make 初始化检查
+    - misspell # 拼写检查
+    - nakedret # 裸返回检查
+    - nilerr # nil 错误检查
+    - nolintlint # nolint 注释检查
+    - prealloc # 切片预分配检查
+    - predeclared # 预声明标识符检查
+    - revive # golint 的替代品
+    - rowserrcheck # SQL rows.Err() 检查
+    - sqlclosecheck # SQL 资源关闭检查
+    - tparallel # 并行测试检查
+    - unconvert # 不必要的类型转换检查
+    - unparam # 未使用参数检查
+    - wastedassign # 浪费的赋值检查
+    - whitespace # 空白字符检查
+
+  disable:
+    - deadcode # 已弃用
+    - exhaustivestruct # 过于严格
+    - forbidigo # 禁用某些函数调用
+    - forcetypeassert # 强制类型断言检查过于严格
+    - gci # 导入分组检查，与 goimports 冲突
+    - gofumpt # 更严格的格式化，可能与团队习惯冲突
+    - golint # 已弃用，使用 revive
+    - ifshort # 过于严格
+    - interfacer # 已弃用
+    - maligned # 已弃用
+    - nlreturn # 过于严格
+    - paralleltest # 并行测试要求过于严格
+    - scopelint # 已弃用
+    - structcheck # 已弃用
+    - varcheck # 已弃用
+    - wsl # 空行要求过于严格
+
+issues:
+  exclude-rules:
+    # 测试文件的特殊规则
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - funlen
+        - gocognit
+        - gomnd
+
+    # 主函数的特殊规则
+    - path: cmd/
+      linters:
+        - gocyclo
+        - funlen
+
+    # 生成的代码
+    - path: ".*\\.pb\\.go"
+      linters:
+        - all
+
+    # 忽略特定的错误消息
+    - text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
+      linters:
+        - errcheck
+
+    - text: "func name will be used as test\\.Test.* by other packages, and that stutters; consider calling this"
+      linters:
+        - revive
+
+    - text: "should have a package comment, unless it's in another file for this package"
+      linters:
+        - revive
+
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false
+  fix: false
