@@ -1,5 +1,220 @@
-\n// internal/config/config.go\npackage config\n\nimport (\n\t\"context\"\n\t\"time\"\n)\n\n// Config 主配置结构\ntype Config struct {\n\tApp       *AppConfig       `yaml:\"app\" json:\"app\" validate:\"required\"`\n\tRules     *RulesConfig     `yaml:\"rules\" json:\"rules\"`\n\tTemplates *TemplatesConfig `yaml:\"templates\" json:\"templates\"`\n}\n\n// AppConfig 应用配置\ntype AppConfig struct {\n\tServer   *ServerConfig   `yaml:\"server\" json:\"server\" validate:\"required\"`\n\tLog      *LogConfig      `yaml:\"log\" json:\"log\" validate:\"required\"`\n\tCache    *CacheConfig    `yaml:\"cache\" json:\"cache\"`\n\tSecurity *SecurityConfig `yaml:\"security\" json:\"security\"`\n\tMonitor  *MonitorConfig  `yaml:\"monitor\" json:\"monitor\"`\n}\n\n// ServerConfig 服务器配置\ntype ServerConfig struct {\n\tHost           string        `yaml:\"host\" json:\"host\" validate:\"required,host\"`\n\tPort           int           `yaml:\"port\" json:\"port\" validate:\"required,port\"`\n\tReadTimeout    time.Duration `yaml:\"read_timeout\" json:\"read_timeout\"`\n\tWriteTimeout   time.Duration `yaml:\"write_timeout\" json:\"write_timeout\"`\n\tMaxConnections int           `yaml:\"max_connections\" json:\"max_connections\" validate:\"min=1\"`\n\tAPIMode        bool          `yaml:\"api_mode\" json:\"api_mode\"`\n}\n\n// LogConfig 日志配置\ntype LogConfig struct {\n\tLevel      string `yaml:\"level\" json:\"level\" validate:\"required,oneof=debug info warn error\"`\n\tFormat     string `yaml:\"format\" json:\"format\" validate:\"oneof=text json\"`\n\tOutput     string `yaml:\"output\" json:\"output\"`\n\tMaxSize    int    `yaml:\"max_size\" json:\"max_size\" validate:\"min=1\"`\n\tMaxBackups int    `yaml:\"max_backups\" json:\"max_backups\" validate:\"min=1\"`\n\tMaxAge     int    `yaml:\"max_age\" json:\"max_age\" validate:\"min=1\"`\n}\n\n// CacheConfig 缓存配置\ntype CacheConfig struct {\n\tEnable      bool          `yaml:\"enable\" json:\"enable\"`\n\tDefaultTTL  time.Duration `yaml:\"default_ttl\" json:\"default_ttl\"`\n\tMaxEntries  int           `yaml:\"max_entries\" json:\"max_entries\" validate:\"min=1\"`\n\tCleanupTime time.Duration `yaml:\"cleanup_time\" json:\"cleanup_time\"`\n}\n\n// SecurityConfig 安全配置\ntype SecurityConfig struct {\n\tEnableAuth     bool     `yaml:\"enable_auth\" json:\"enable_auth\"`\n\tRateLimiting   bool     `yaml:\"rate_limiting\" json:\"rate_limiting\"`\n\tMaxReqPerMin   int      `yaml:\"max_req_per_min\" json:\"max_req_per_min\" validate:\"min=1\"`\n\tAllowedOrigins []string `yaml:\"allowed_origins\" json:\"allowed_origins\"`\n}\n\n// MonitorConfig 监控配置\ntype MonitorConfig struct {\n\tEnableMetrics bool   `yaml:\"enable_metrics\" json:\"enable_metrics\"`\n\tMetricsPath   string `yaml:\"metrics_path\" json:\"metrics_path\"`\n\tEnablePprof   bool   `yaml:\"enable_pprof\" json:\"enable_pprof\"`\n\tPprofPath     string `yaml:\"pprof_path\" json:\"pprof_path\"`\n}\n\n// RulesConfig 规则配置\ntype RulesConfig struct {\n\tNodeFilters  []*NodeFilter  `yaml:\"node_filters\" json:\"node_filters\"`\n\tRenameRules  []*RenameRule  `yaml:\"rename_rules\" json:\"rename_rules\"`\n\tRegionRules  []*RegionRule  `yaml:\"region_rules\" json:\"region_rules\"`\n\tCustomRules  []*CustomRule  `yaml:\"custom_rules\" json:\"custom_rules\"`\n\tDefaultRules *DefaultRules  `yaml:\"default_rules\" json:\"default_rules\"`\n}\n\n// NodeFilter 节点过滤器\ntype NodeFilter struct {\n\tName     string   `yaml:\"name\" json:\"name\" validate:\"required\"`\n\tType     string   `yaml:\"type\" json:\"type\" validate:\"required,oneof=include exclude\"`\n\tPatterns []string `yaml:\"patterns\" json:\"patterns\" validate:\"required,min=1\"`\n\tRegex    bool     `yaml:\"regex\" json:\"regex\"`\n\tEnabled  bool     `yaml:\"enabled\" json:\"enabled\"`\n}\n\n// RenameRule 重命名规则\ntype RenameRule struct {\n\tName        string `yaml:\"name\" json:\"name\" validate:\"required\"`\n\tPattern     string `yaml:\"pattern\" json:\"pattern\" validate:\"required\"`\n\tReplacement string `yaml:\"replacement\" json:\"replacement\" validate:\"required\"`\n\tRegex       bool   `yaml:\"regex\" json:\"regex\"`\n\tEnabled     bool   `yaml:\"enabled\" json:\"enabled\"`\n}\n\n// RegionRule 地区分组规则\ntype RegionRule struct {\n\tName     string   `yaml:\"name\" json:\"name\" validate:\"required\"`\n\tRegions  []string `yaml:\"regions\" json:\"regions\" validate:\"required,min=1\"`\n\tPatterns []string `yaml:\"patterns\" json:\"patterns\" validate:\"required,min=1\"`\n\tRegex    bool     `yaml:\"regex\" json:\"regex\"`\n\tEnabled  bool     `yaml:\"enabled\" json:\"enabled\"`\n}\n\n// CustomRule 自定义规则\ntype CustomRule struct {\n\tName        string            `yaml:\"name\" json:\"name\" validate:\"required\"`\n\tType        string            `yaml:\"type\" json:\"type\" validate:\"required\"`\n\tParameters  map[string]string `yaml:\"parameters\" json:\"parameters\"`\n\tEnabled     bool              `yaml:\"enabled\" json:\"enabled\"`\n\tDescription string            `yaml:\"description\" json:\"description\"`\n}\n\n// DefaultRules 默认规则配置\ntype DefaultRules struct {\n\tEnableNodeFilter bool `yaml:\"enable_node_filter\" json:\"enable_node_filter\"`\n\tEnableRename     bool `yaml:\"enable_rename\" json:\"enable_rename\"`\n\tEnableRegion     bool `yaml:\"enable_region\" json:\"enable_region\"`\n\tSortNodes        bool `yaml:\"sort_nodes\" json:\"sort_nodes\"`\n\tUDPSupport       bool `yaml:\"udp_support\" json:\"udp_support\"`\n}\n\n// TemplatesConfig 模板配置\ntype TemplatesConfig struct {\n\tClientTemplates []*ClientTemplate `yaml:\"client_templates\" json:\"client_templates\"`\n\tDefaultTemplate string            `yaml:\"default_template\" json:\"default_template\"`\n\tTemplateDir     string            `yaml:\"template_dir\" json:\"template_dir\"`\n\tCacheTemplates  bool              `yaml:\"cache_templates\" json:\"cache_templates\"`\n}\n\n// ClientTemplate 客户端模板\ntype ClientTemplate struct {\n\tName        string            `yaml:\"name\" json:\"name\" validate:\"required\"`\n\tType        string            `yaml:\"type\" json:\"type\" validate:\"required\"`\n\tFile        string            `yaml:\"file\" json:\"file\" validate:\"required,template_file\"`\n\tDescription string            `yaml:\"description\" json:\"description\"`\n\tEnabled     bool              `yaml:\"enabled\" json:\"enabled\"`\n\tOptions     map[string]string `yaml:\"options\" json:\"options\"`\n}\n\n// Manager 配置管理器\ntype Manager struct {\n\tconfig *Config\n\tloader *Loader\n}\n\n// NewManager 创建配置管理器\nfunc NewManager(configDir string) *Manager {\n\treturn &Manager{\n\t\tloader: NewLoader(configDir),\n\t}\n}\n\n// LoadConfig 加载配置\nfunc (m *Manager) LoadConfig() error {\n\tconfig, err := m.loader.LoadConfig(context.Background())\n\tif err != nil {\n\t\treturn err\n\t}\n\tm.config = config\n\treturn nil\n}\n\n// GetConfig 获取配置\nfunc (m *Manager) GetConfig() *Config {\n\treturn m.config\n}\n\n// GetAppConfig 获取应用配置\nfunc (m *Manager) GetAppConfig() *AppConfig {\n\tif m.config == nil {\n\t\treturn nil\n\t}\n\treturn m.config.App\n}\n\n// GetRulesConfig 获取规则配置\nfunc (m *Manager) GetRulesConfig() *RulesConfig {\n\tif m.config == nil {\n\t\treturn nil\n\t}\n\treturn m.config.Rules\n}\n\n// GetTemplatesConfig 获取模板配置\nfunc (m *Manager) GetTemplatesConfig() *TemplatesConfig {\n\tif m.config == nil {\n\t\treturn nil\n\t}\n\treturn m.config.Templates\n}\n\n// GetDefaultConfig 获取默认配置\nfunc GetDefaultConfig() *Config {\n\treturn &Config{\n\t\tApp: &AppConfig{\n\t\t\tServer: &ServerConfig{\n\t\t\t\tHost:           \"0.0.0.0\",\n\t\t\t\tPort:           25500,\n\t\t\t\tReadTimeout:    30 * time.Second,\n\t\t\t\tWriteTimeout:   30 * time.Second,\n\t\t\t\tMaxConnections: 1000,\n\t\t\t\tAPIMode:        f
-alse,
+// internal/config/config.go
+package config
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+// Config 主配置结构
+type Config struct {
+	App       *AppConfig       `yaml:"app" json:"app" validate:"required"`
+	Rules     *RulesConfig     `yaml:"rules" json:"rules"`
+	Templates *TemplatesConfig `yaml:"templates" json:"templates"`
+}
+
+// AppConfig 应用配置
+type AppConfig struct {
+	Server   *ServerConfig   `yaml:"server" json:"server" validate:"required"`
+	Log      *LogConfig      `yaml:"log" json:"log" validate:"required"`
+	Cache    *CacheConfig    `yaml:"cache" json:"cache"`
+	Security *SecurityConfig `yaml:"security" json:"security"`
+	Monitor  *MonitorConfig  `yaml:"monitor" json:"monitor"`
+}
+
+// ServerConfig 服务器配置
+type ServerConfig struct {
+	Host           string        `yaml:"host" json:"host" validate:"required,host"`
+	Port           int           `yaml:"port" json:"port" validate:"required,port"`
+	ReadTimeout    time.Duration `yaml:"read_timeout" json:"read_timeout"`
+	WriteTimeout   time.Duration `yaml:"write_timeout" json:"write_timeout"`
+	MaxConnections int           `yaml:"max_connections" json:"max_connections" validate:"min=1"`
+	APIMode        bool          `yaml:"api_mode" json:"api_mode"`
+}
+
+// LogConfig 日志配置
+type LogConfig struct {
+	Level      string `yaml:"level" json:"level" validate:"required,oneof=debug info warn error"`
+	Format     string `yaml:"format" json:"format" validate:"oneof=text json"`
+	Output     string `yaml:"output" json:"output"`
+	MaxSize    int    `yaml:"max_size" json:"max_size" validate:"min=1"`
+	MaxBackups int    `yaml:"max_backups" json:"max_backups" validate:"min=1"`
+	MaxAge     int    `yaml:"max_age" json:"max_age" validate:"min=1"`
+}
+
+// CacheConfig 缓存配置
+type CacheConfig struct {
+	Enable      bool          `yaml:"enable" json:"enable"`
+	DefaultTTL  time.Duration `yaml:"default_ttl" json:"default_ttl"`
+	MaxEntries  int           `yaml:"max_entries" json:"max_entries" validate:"min=1"`
+	CleanupTime time.Duration `yaml:"cleanup_time" json:"cleanup_time"`
+}
+
+// SecurityConfig 安全配置
+type SecurityConfig struct {
+	EnableAuth     bool     `yaml:"enable_auth" json:"enable_auth"`
+	RateLimiting   bool     `yaml:"rate_limiting" json:"rate_limiting"`
+	MaxReqPerMin   int      `yaml:"max_req_per_min" json:"max_req_per_min" validate:"min=1"`
+	AllowedOrigins []string `yaml:"allowed_origins" json:"allowed_origins"`
+}
+
+// MonitorConfig 监控配置
+type MonitorConfig struct {
+	EnableMetrics bool   `yaml:"enable_metrics" json:"enable_metrics"`
+	MetricsPath   string `yaml:"metrics_path" json:"metrics_path"`
+	EnablePprof   bool   `yaml:"enable_pprof" json:"enable_pprof"`
+	PprofPath     string `yaml:"pprof_path" json:"pprof_path"`
+}
+
+// RulesConfig 规则配置
+type RulesConfig struct {
+	NodeFilters  []*NodeFilter  `yaml:"node_filters" json:"node_filters"`
+	RenameRules  []*RenameRule  `yaml:"rename_rules" json:"rename_rules"`
+	RegionRules  []*RegionRule  `yaml:"region_rules" json:"region_rules"`
+	CustomRules  []*CustomRule  `yaml:"custom_rules" json:"custom_rules"`
+	DefaultRules *DefaultRules  `yaml:"default_rules" json:"default_rules"`
+}
+
+// NodeFilter 节点过滤器
+type NodeFilter struct {
+	Name     string   `yaml:"name" json:"name" validate:"required"`
+	Type     string   `yaml:"type" json:"type" validate:"required,oneof=include exclude"`
+	Patterns []string `yaml:"patterns" json:"patterns" validate:"required,min=1"`
+	Regex    bool     `yaml:"regex" json:"regex"`
+	Enabled  bool     `yaml:"enabled" json:"enabled"`
+}
+
+// RenameRule 重命名规则
+type RenameRule struct {
+	Name        string `yaml:"name" json:"name" validate:"required"`
+	Pattern     string `yaml:"pattern" json:"pattern" validate:"required"`
+	Replacement string `yaml:"replacement" json:"replacement" validate:"required"`
+	Regex       bool   `yaml:"regex" json:"regex"`
+	Enabled     bool   `yaml:"enabled" json:"enabled"`
+}
+
+// RegionRule 地区分组规则
+type RegionRule struct {
+	Name     string   `yaml:"name" json:"name" validate:"required"`
+	Regions  []string `yaml:"regions" json:"regions" validate:"required,min=1"`
+	Patterns []string `yaml:"patterns" json:"patterns" validate:"required,min=1"`
+	Regex    bool     `yaml:"regex" json:"regex"`
+	Enabled  bool     `yaml:"enabled" json:"enabled"`
+}
+
+// CustomRule 自定义规则
+type CustomRule struct {
+	Name        string            `yaml:"name" json:"name" validate:"required"`
+	Type        string            `yaml:"type" json:"type" validate:"required"`
+	Parameters  map[string]string `yaml:"parameters" json:"parameters"`
+	Enabled     bool              `yaml:"enabled" json:"enabled"`
+	Description string            `yaml:"description" json:"description"`
+}
+
+// DefaultRules 默认规则配置
+type DefaultRules struct {
+	EnableNodeFilter bool `yaml:"enable_node_filter" json:"enable_node_filter"`
+	EnableRename     bool `yaml:"enable_rename" json:"enable_rename"`
+	EnableRegion     bool `yaml:"enable_region" json:"enable_region"`
+	SortNodes        bool `yaml:"sort_nodes" json:"sort_nodes"`
+	UDPSupport       bool `yaml:"udp_support" json:"udp_support"`
+}
+
+// TemplatesConfig 模板配置
+type TemplatesConfig struct {
+	ClientTemplates []*ClientTemplate `yaml:"client_templates" json:"client_templates"`
+	DefaultTemplate string            `yaml:"default_template" json:"default_template"`
+	TemplateDir     string            `yaml:"template_dir" json:"template_dir"`
+	CacheTemplates  bool              `yaml:"cache_templates" json:"cache_templates"`
+}
+
+// ClientTemplate 客户端模板
+type ClientTemplate struct {
+	Name        string            `yaml:"name" json:"name" validate:"required"`
+	Type        string            `yaml:"type" json:"type" validate:"required"`
+	File        string            `yaml:"file" json:"file" validate:"required,template_file"`
+	Description string            `yaml:"description" json:"description"`
+	Enabled     bool              `yaml:"enabled" json:"enabled"`
+	Options     map[string]string `yaml:"options" json:"options"`
+}
+
+// Manager 配置管理器
+type Manager struct {
+	config *Config
+	loader *Loader
+}
+
+// NewManager 创建配置管理器
+func NewManager(configDir string) *Manager {
+	return &Manager{
+		loader: NewLoader(configDir),
+	}
+}
+
+// LoadConfig 加载配置
+func (m *Manager) LoadConfig() error {
+	// 首先尝试加载统一配置文件
+	configFile := filepath.Join(m.loader.configDir, "config.yaml")
+	if _, err := os.Stat(configFile); err == nil {
+		config, err := m.loader.LoadFromFile(configFile)
+		if err != nil {
+			return err
+		}
+		m.config = config
+		return nil
+	}
+
+	// 如果统一配置文件不存在，则使用分离的配置文件
+	config, err := m.loader.LoadConfig(context.Background())
+	if err != nil {
+		return err
+	}
+	m.config = config
+	return nil
+}
+
+// GetConfig 获取配置
+func (m *Manager) GetConfig() *Config {
+	return m.config
+}
+
+// GetAppConfig 获取应用配置
+func (m *Manager) GetAppConfig() *AppConfig {
+	if m.config == nil {
+		return nil
+	}
+	return m.config.App
+}
+
+// GetRulesConfig 获取规则配置
+func (m *Manager) GetRulesConfig() *RulesConfig {
+	if m.config == nil {
+		return nil
+	}
+	return m.config.Rules
+}
+
+// GetTemplatesConfig 获取模板配置
+func (m *Manager) GetTemplatesConfig() *TemplatesConfig {
+	if m.config == nil {
+		return nil
+	}
+	return m.config.Templates
+}
+
+// GetDefaultConfig 获取默认配置
+func GetDefaultConfig() *Config {
+	return &Config{
+		App: &AppConfig{
+			Server: &ServerConfig{
+				Host:           "0.0.0.0",
+				Port:           25500,
+				ReadTimeout:    30 * time.Second,
+				WriteTimeout:   30 * time.Second,
+				MaxConnections: 1000,
+				APIMode:        false,
 			},
 			Log: &LogConfig{
 				Level:      "info",

@@ -242,7 +242,10 @@ func ValidateProxy(proxy *Proxy) error {
 	}
 
 	// 自定义业务逻辑验证
-	if !proxy.IsValid() {
+	if err := proxy.Validate(); err != nil {
+		return err
+	}
+	if proxy == nil {
 		return types.NewConvertError(types.ErrorCodeValidationError, "proxy configuration is invalid")
 	}
 

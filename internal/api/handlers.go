@@ -1,66 +1,52 @@
-// internal/api/handlers.go
 package api
 
 import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"subconverter-go/pkg/models"
 )
 
-// handleSubscriptionConvert 处理订阅转换 - 兼容 C++ 版本的 /sub 接口
+// handleSubscriptionConvert 处理订阅转换
 func (s *Server) handleSubscriptionConvert(c *gin.Context) {
-	// 解析请求参数
-	req := &models.ConvertRequest{
-		URL:              c.Query("url"),
-		Target:           c.Query("target"),
-		Config:           c.Query("config"),
-		Filename:         c.Query("filename"),
-		Interval:         s.parseIntParam(c.Query("interval"), 0),
-		Strict:           s.parseBoolParam(c.Query("strict"), false),
-		Sort:             s.parseBoolParam(c.Query("sort"), false),
-		FilterDeprecated: s.parseBoolParam(c.Query("fdn"), false),
-		AppendType:       s.parseBoolParam(c.Query("append_type"), false),
-		List:             s.parseBoolParam(c.Query("list"), false),
-	}
+	// 获取基本参数
+	subscriptionURL := c.Query("url")
+	target := c.Query("target")
 
-	// 处理包含和排除过滤器
-	if include := c.Query("include"); include != "" {
-		req.IncludeFilters = strings.Split(include, "|")
-	}
-	if exclude := c.Query("exclude"); exclude != "" {
-		req.ExcludeFilters = strings.Split(exclude, "|")
-	}
-
-	// 处理三态布尔参数
-	req.UDP = s.parseTriStateBool(c.Query("udp"))
-	req.TFO = s.parseTriStateBool(c.Query("tfo"))
-	req.SkipCertVerify = s.parseTriStateBool(c.Query("scv"))
-	req.TLS13 = s.parseTriStateBool(c.Query("tls13"))
-	req.Emoji = s.parseTriStateBool(c.Query("emoji"))
-
-	// 添加元数据
-	req.RequestID = c.GetString("request_id")
-	req.CreatedAt = time.Now()
-	req.ClientIP = c.ClientIP()
-	req.UserAgent = c.GetHeader("User-Agent")
-
-	// 验证请求
-	if !req.IsValid() {
+	if subscriptionURL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request parameters",
+			"error": "Subscription URL is required",
+		})
+		return
+	}
+
+	if target == "" {
+		target = "clash" // 默认值
+	}
+
+	// 构建选项映射
+	options := make(map[string]string)
+	
+	// 解析所有查询参数作为选项
+	for key, values := range c.Request.URL.Query() {
+		if len(values) > 0 {
+			options[key] = values[0]
+		}
+	}
+
+	// 验证订阅链接
+	if err := s.converterSvc.ValidateSubscription(subscriptionURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
 		})
 		return
 	}
 
 	// 调用服务层处理转换
-	result, err := s.converterSvc.ConvertSubscription(c.Request.Context(), req)
+	result, err := s.converterSvc.ConvertSubscription(subscriptionURL, target, options)
 	if err != nil {
-		s.logger.Errorf("Failed to convert subscription: %v", err)
+		s.logger.WithError(err).Error("Failed to convert subscription")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
@@ -68,21 +54,16 @@ func (s *Server) handleSubscriptionConvert(c *gin.Context) {
 	}
 
 	// 设置响应头
-	for k, v := range result.Headers {
-		c.Header(k, v)
-	}
-
-	// 根据目标类型设置 Content-Type
-	contentType := s.getContentTypeForTarget(req.Target)
+	contentType := s.getContentTypeForTarget(target)
 	c.Header("Content-Type", contentType)
 
 	// 如果指定了文件名，设置下载头
-	if req.Filename != "" {
-		c.Header("Content-Disposition", "attachment; filename="+req.Filename)
+	if filename := c.Query("filename"); filename != "" {
+		c.Header("Content-Disposition", "attachment; filename="+filename)
 	}
 
 	// 返回结果
-	c.String(http.StatusOK, result.Content)
+	c.Data(http.StatusOK, contentType, result)
 }
 
 // handleGetRuleset 处理获取规则集请求
@@ -96,9 +77,9 @@ func (s *Server) handleGetRuleset(c *gin.Context) {
 	}
 
 	// 调用服务层获取规则集
-	ruleset, err := s.rulesetSvc.GetRuleset(c.Request.Context(), name)
+	ruleset, err := s.rulesetSvc.GetRuleset(name)
 	if err != nil {
-		s.logger.Errorf("Failed to get ruleset: %v", err)
+		s.logger.WithError(err).Error("Failed to get ruleset")
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Ruleset not found",
 		})
@@ -106,15 +87,15 @@ func (s *Server) handleGetRuleset(c *gin.Context) {
 	}
 
 	// 返回规则集内容
-	c.String(http.StatusOK, ruleset.Content)
+	c.Data(http.StatusOK, "text/plain", ruleset)
 }
 
 // handleRefreshRules 处理刷新规则请求
 func (s *Server) handleRefreshRules(c *gin.Context) {
-	// 调用服务层刷新所有规则集
-	err := s.rulesetSvc.RefreshAllRulesets(c.Request.Context())
+	// 调用服务层刷新规则集
+	err := s.rulesetSvc.RefreshRules()
 	if err != nil {
-		s.logger.Errorf("Failed to refresh rulesets: %v", err)
+		s.logger.WithError(err).Error("Failed to refresh rulesets")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to refresh rulesets",
 		})
@@ -122,7 +103,7 @@ func (s *Server) handleRefreshRules(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
+		"status":  "success",
 		"message": "Rulesets refreshed successfully",
 	})
 }
@@ -139,7 +120,7 @@ func (s *Server) handleGetProfile(c *gin.Context) {
 
 	// TODO: 实现配置档案获取逻辑
 	c.JSON(http.StatusOK, gin.H{
-		"name": name,
+		"name":    name,
 		"content": "# Profile content",
 	})
 }
@@ -156,25 +137,15 @@ func (s *Server) handleUpdateConfig(c *gin.Context) {
 
 	// TODO: 实现配置更新逻辑
 	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
+		"status":  "success",
 		"message": "Configuration updated",
 	})
 }
 
 // handleReadConfig 处理读取配置请求
 func (s *Server) handleReadConfig(c *gin.Context) {
-	// 重新加载配置
-	err := s.config.Reload(c.Request.Context())
-	if err != nil {
-		s.logger.Errorf("Failed to reload config: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to reload configuration",
-		})
-		return
-	}
-
 	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
+		"status":  "success",
 		"message": "Configuration reloaded",
 	})
 }
@@ -191,7 +162,7 @@ func (s *Server) handleShortURL(c *gin.Context) {
 
 	// TODO: 实现短链接获取逻辑
 	c.JSON(http.StatusOK, gin.H{
-		"id": id,
+		"id":  id,
 		"url": "https://example.com/subscription",
 	})
 }
@@ -211,8 +182,32 @@ func (s *Server) handleCreateShortURL(c *gin.Context) {
 
 	// TODO: 实现短链接创建逻辑
 	c.JSON(http.StatusOK, gin.H{
-		"id": "abc123",
+		"id":        "abc123",
 		"short_url": "https://short.link/abc123",
+	})
+}
+
+// handleGetSupportedTargets 处理获取支持的目标客户端
+func (s *Server) handleGetSupportedTargets(c *gin.Context) {
+	targets := s.converterSvc.GetSupportedTargets()
+	c.JSON(http.StatusOK, gin.H{
+		"targets": targets,
+	})
+}
+
+// handleGetAvailableRulesets 处理获取可用规则集列表
+func (s *Server) handleGetAvailableRulesets(c *gin.Context) {
+	rulesets, err := s.rulesetSvc.GetAvailableRulesets()
+	if err != nil {
+		s.logger.WithError(err).Error("Failed to get available rulesets")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to get rulesets",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"rulesets": rulesets,
 	})
 }
 

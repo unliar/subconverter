@@ -1,0 +1,412 @@
+name: Go CI/CD Pipeline
+
+on:
+  push:
+    branches: [master, dev, dev/currenry]
+  pull_request:
+    branches: [master]
+  release:
+    types: [published]
+
+env:
+  GO_VERSION: "1.21"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # 代码质量检查
+  lint:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          args: --timeout=5m --config=.golangci.yml
+
+      - name: Check formatting
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "以下文件需要格式化："
+            gofmt -s -l .
+            exit 1
+          fi
+
+      - name: Check go mod tidy
+        run: |
+          go mod tidy
+          if ! git diff --exit-code go.mod go.sum; then
+            echo "go mod tidy 产生了变更，请运行 'go mod tidy' 并提交变更"
+            exit 1
+          fi
+
+  # 测试
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ["1.19", "1.20", "1.21"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Create test directories
+        run: |
+          mkdir -p test-results
+          mkdir -p coverage-reports
+
+      - name: Run tests with race detection
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./... | tee test-results/test-output.log
+
+      - name: Generate coverage report
+        run: |
+          go tool cover -html=coverage.out -o coverage-reports/coverage.html
+          go tool cover -func=coverage.out > coverage-reports/coverage.txt
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "总覆盖率: ${COVERAGE}%"
+          echo "COVERAGE=${COVERAGE}" >> $GITHUB_ENV
+          if (( $(echo "$COVERAGE < 75" | bc -l) )); then
+            echo "警告: 代码覆盖率 ${COVERAGE}% 低于要求的 75%"
+            exit 1
+          fi
+
+      - name: Upload coverage to Codecov
+        if: matrix.go-version == '1.21'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-go${{ matrix.go-version }}
+          path: |
+            test-results/
+            coverage-reports/
+          retention-days: 30
+
+  # 安全扫描
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install security tools
+        run: |
+          go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+          go install github.com/sonatypecommunity/nancy@latest
+
+      - name: Run Gosec Security Scanner
+        run: |
+          gosec -fmt json -out gosec-report.json -exclude-dir=test ./...
+          gosec -fmt text ./...
+
+      - name: Run Nancy vulnerability scanner
+        run: |
+          go list -json -deps ./... | nancy sleuth --skip-update-check
+
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: gosec-report.json
+          retention-days: 30
+
+  # 构建
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Get build info
+        id: build_info
+        run: |
+          echo "version=$(git describe --tags --always --dirty)" >> $GITHUB_OUTPUT
+          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          BINARY_NAME="subconverter-go-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+
+          echo "构建 ${BINARY_NAME}..."
+          go build \
+            -ldflags "-X main.version=${{ steps.build_info.outputs.version }} -X main.commit=${{ steps.build_info.outputs.commit }} -X main.date=${{ steps.build_info.outputs.date }} -s -w" \
+            -o "${BINARY_NAME}" \
+            ./cmd/subconverter
+
+          echo "构建完成: ${BINARY_NAME}"
+          ls -la "${BINARY_NAME}"
+
+      - name: Create release package
+        run: |
+          BINARY_NAME="subconverter-go-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+
+          # 创建发布目录
+          RELEASE_DIR="subconverter-go-${{ matrix.goos }}-${{ matrix.goarch }}"
+          mkdir -p "${RELEASE_DIR}"
+
+          # 复制二进制文件
+          cp "${BINARY_NAME}" "${RELEASE_DIR}/"
+
+          # 复制配置文件和文档
+          cp -r configs/ "${RELEASE_DIR}/" || true
+          cp -r templates/ "${RELEASE_DIR}/" || true
+          cp README*.md "${RELEASE_DIR}/" || true
+          cp LICENSE "${RELEASE_DIR}/" || true
+
+          # 创建压缩包
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip -r "${RELEASE_DIR}.zip" "${RELEASE_DIR}/"
+          else
+            tar czf "${RELEASE_DIR}.tar.gz" "${RELEASE_DIR}/"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            subconverter-go-${{ matrix.goos }}-${{ matrix.goarch }}.*
+          retention-days: 30
+
+  # Docker 构建和推送
+  docker:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [lint, test, security]
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Get build info
+        id: build_info
+        run: |
+          echo "version=$(git describe --tags --always --dirty)" >> $GITHUB_OUTPUT
+          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.go
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.build_info.outputs.version }}
+            COMMIT=${{ steps.build_info.outputs.commit }}
+            DATE=${{ steps.build_info.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # 发布
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build, docker]
+    if: github.event_name == 'release'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Create release assets
+        run: |
+          mkdir -p release
+          echo "收集构建产物..."
+
+          for dir in artifacts/binaries-*; do
+            if [ -d "$dir" ]; then
+              echo "处理目录: $dir"
+              cd "$dir"
+              for file in *; do
+                if [ -f "$file" ]; then
+                  echo "复制文件: $file"
+                  cp "$file" "../../release/"
+                fi
+              done
+              cd - > /dev/null
+            fi
+          done
+
+          echo "发布文件列表:"
+          ls -la release/
+
+      - name: Generate release notes
+        run: |
+          echo "## SubConverter Go 版本发布" > release-notes.md
+          echo "" >> release-notes.md
+          echo "### 🚀 功能特性" >> release-notes.md
+          echo "- 完整的 Go 语言重写" >> release-notes.md
+          echo "- 支持多种代理协议 (Shadowsocks, VMess, Trojan, VLESS 等)" >> release-notes.md
+          echo "- 支持多种输出格式 (Clash, Surge, QuantumultX 等)" >> release-notes.md
+          echo "- 高性能、低内存占用" >> release-notes.md
+          echo "- 完整的测试覆盖" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "### 📦 支持平台" >> release-notes.md
+          echo "- Linux (amd64, arm64)" >> release-notes.md
+          echo "- macOS (amd64, arm64)" >> release-notes.md
+          echo "- Windows (amd64)" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "### 🐳 Docker" >> release-notes.md
+          echo "```bash" >> release-notes.md
+          echo "docker pull ghcr.io/${{ github.repository }}:latest" >> release-notes.md
+          echo "```" >> release-notes.md
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          body_path: release-notes.md
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 性能基准测试
+  benchmark:
+    name: Performance Benchmark
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run benchmarks
+        run: |
+          go test -bench=. -benchmem -run=^$ ./... | tee benchmark-results.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-results
+          path: benchmark-results.txt
+          retention-days: 30

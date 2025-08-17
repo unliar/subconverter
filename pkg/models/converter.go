@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 
-	"subconverter-go/pkg/types"
-
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,17 +32,17 @@ func (pc *ProxyConverter) ToMap(proxy *Proxy) map[string]interface{} {
 
 	// 根据代理类型添加特定字段
 	switch proxy.Type {
-	case types.ProxyTypeShadowsocks:
+	case ProxyTypeShadowsocks:
 		pc.addShadowsocksFields(result, proxy)
-	case types.ProxyTypeShadowsocksR:
+	case ProxyTypeShadowsocksR:
 		pc.addShadowsocksRFields(result, proxy)
-	case types.ProxyTypeVMess, types.ProxyTypeVLESS:
+	case ProxyTypeVMess, ProxyTypeVLESS:
 		pc.addVMessFields(result, proxy)
-	case types.ProxyTypeTrojan:
+	case ProxyTypeTrojan:
 		pc.addTrojanFields(result, proxy)
-	case types.ProxyTypeHTTP, types.ProxyTypeHTTPS:
+	case ProxyTypeHTTP, ProxyTypeHTTPS:
 		pc.addHTTPFields(result, proxy)
-	case types.ProxyTypeSOCKS5:
+	case ProxyTypeSOCKS5:
 		pc.addSOCKS5Fields(result, proxy)
 	}
 
@@ -108,7 +106,7 @@ func (pc *ProxyConverter) addVMessFields(result map[string]interface{}, proxy *P
 	}
 
 	// TLS 配置
-	if proxy.TLSStr == "tls" {
+	if proxy.TLS == "tls" {
 		result["tls"] = true
 		if proxy.SNI != "" {
 			result["servername"] = proxy.SNI
@@ -116,13 +114,11 @@ func (pc *ProxyConverter) addVMessFields(result map[string]interface{}, proxy *P
 	}
 
 	// VLESS 特有字段
-	if proxy.Type == types.ProxyTypeVLESS {
+	if proxy.Type == ProxyTypeVLESS {
 		if proxy.Flow != "" {
 			result["flow"] = proxy.Flow
 		}
-		if proxy.PacketEncoding != "" {
-			result["packet-encoding"] = proxy.PacketEncoding
-		}
+		// VLESS specific fields can be added here
 	}
 }
 
@@ -154,7 +150,7 @@ func (pc *ProxyConverter) addHTTPFields(result map[string]interface{}, proxy *Pr
 	}
 
 	// HTTPS 特有配置
-	if proxy.Type == types.ProxyTypeHTTPS {
+	if proxy.Type == ProxyTypeHTTPS {
 		result["tls"] = true
 		if proxy.SNI != "" {
 			result["sni"] = proxy.SNI

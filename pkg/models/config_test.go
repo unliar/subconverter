@@ -79,8 +79,11 @@ func TestConverterConfig_IsValid(t *testing.T) {
 			config: &ConverterConfig{
 				CustomRulesets: []RulesetConfig{
 					{
-						Group: "test",
-						URL:   "https://example.com/rules.list",
+						Name:   "test-ruleset",
+						Type:   "DOMAIN",
+						Policy: "PROXY",
+						Group:  "test",
+						URL:    "https://example.com/rules.list",
 					},
 				},
 			},

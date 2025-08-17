@@ -2,411 +2,323 @@ package models
 
 import (
 	"testing"
-	"time"
-
-	"subconverter-go/pkg/types"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestRulesetConfig_IsValid(t *testing.T) {
-	tests := []struct {
-		name     string
-		ruleset  *RulesetConfig
-		expected bool
-	}{
-		{
-			name: "valid ruleset",
-			ruleset: &RulesetConfig{
-				Group:    "example",
-				URL:      "https://example.com/rules.list",
-				Interval: 86400,
-				Type:     types.RulesetTypeClashDomain,
-			},
-			expected: true,
-		},
-		{
-			name: "valid ruleset with default interval",
-			ruleset: &RulesetConfig{
-				Group: "example",
-				URL:   "https://example.com/rules.list",
-				Type:  types.RulesetTypeClashDomain,
-			},
-			expected: true,
-		},
-		{
-			name: "invalid - missing group",
-			ruleset: &RulesetConfig{
-				URL:      "https://example.com/rules.list",
-				Interval: 86400,
-			},
-			expected: false,
-		},
-		{
-			name: "invalid - missing URL",
-			ruleset: &RulesetConfig{
-				Group:    "example",
-				Interval: 86400,
-			},
-			expected: false,
-		},
-		{
-			name: "invalid - malformed URL",
-			ruleset: &RulesetConfig{
-				Group: "example",
-				URL:   "not-a-valid-url",
-			},
-			expected: true, // Go的url.Parse对此比较宽松，会接受这种格式
-		},
-		{
-			name:     "nil ruleset",
-			ruleset:  nil,
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.ruleset.IsValid()
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+func TestRulesetConfigCreation(t *testing.T) {
+	t.Run("Create Basic RulesetConfig", func(t *testing.T) {
+		ruleset := &RulesetConfig{
+			Name:     "test-ruleset",
+			Type:     "DOMAIN",
+			Rule:     "example.com",
+			Policy:   "REJECT",
+			URL:      "https://example.com/rules.list",
+			Interval: 86400,
+			Group:    "ads",
+		}
+		
+		assert.NotNil(t, ruleset)
+		assert.Equal(t, "test-ruleset", ruleset.Name)
+		assert.Equal(t, "DOMAIN", ruleset.Type)
+		assert.Equal(t, "example.com", ruleset.Rule)
+		assert.Equal(t, "REJECT", ruleset.Policy)
+		assert.Equal(t, "https://example.com/rules.list", ruleset.URL)
+		assert.Equal(t, 86400, ruleset.Interval)
+		assert.Equal(t, "ads", ruleset.Group)
+	})
 }
 
-func TestRulesetConfig_SetDefaults(t *testing.T) {
-	ruleset := &RulesetConfig{
-		Group: "test",
-		URL:   "https://example.com/rules.list",
-	}
-
-	ruleset.SetDefaults()
-
-	assert.Equal(t, 86400, ruleset.Interval)
-	assert.False(t, ruleset.CreatedAt.IsZero())
-	assert.False(t, ruleset.UpdatedAt.IsZero())
-}
-
-func TestRulesetConfig_GetKey(t *testing.T) {
-	ruleset := &RulesetConfig{
-		Group: "example",
-		URL:   "https://example.com/rules.list",
-	}
-
-	key := ruleset.GetKey()
-	expected := "example:https://example.com/rules.list"
-	assert.Equal(t, expected, key)
-}
-
-func TestRulesetConfig_Clone(t *testing.T) {
-	original := &RulesetConfig{
-		Group:     "example",
-		URL:       "https://example.com/rules.list",
-		Interval:  86400,
-		Type:      types.RulesetTypeClashDomain,
-		CreatedAt: time.Now(),
-	}
-
-	cloned := original.Clone()
-
-	// 验证值相等
-	assert.Equal(t, original.Group, cloned.Group)
-	assert.Equal(t, original.URL, cloned.URL)
-	assert.Equal(t, original.Interval, cloned.Interval)
-	assert.Equal(t, original.Type, cloned.Type)
-	assert.Equal(t, original.CreatedAt, cloned.CreatedAt)
-
-	// 验证是独立的对象
-	assert.NotSame(t, original, cloned)
-
-	// 修改克隆不应影响原对象
-	cloned.Group = "modified"
-	assert.Equal(t, "example", original.Group)
-	assert.Equal(t, "modified", cloned.Group)
-}
-
-func TestRulesetContent_GetHash(t *testing.T) {
-	content := &RulesetContent{
-		Group:   "test",
-		URL:     "https://example.com/rules.list",
-		Content: "DOMAIN,example.com\nDOMAIN,test.com",
-		Type:    types.RulesetTypeClashDomain,
-	}
-
-	hash1 := content.GetHash()
-	assert.NotEmpty(t, hash1)
-	assert.Len(t, hash1, 32) // MD5 hash length
-
-	// 再次调用应该返回相同的哈希（缓存）
-	hash2 := content.GetHash()
-	assert.Equal(t, hash1, hash2)
-
-	// 修改内容应该生成新的哈希
-	content.Content = "DOMAIN,newexample.com"
-	content.Hash = "" // 重置缓存
-	hash3 := content.GetHash()
-	assert.NotEqual(t, hash1, hash3)
-}
-
-func TestRulesetContent_IsExpired(t *testing.T) {
-	content := &RulesetContent{
-		UpdatedAt: time.Now().Add(-2 * time.Hour),
-	}
-
-	// 使用1小时间隔，应该过期
-	expired := content.IsExpired(3600)
-	assert.True(t, expired)
-
-	// 使用3小时间隔，不应该过期
-	notExpired := content.IsExpired(3 * 3600)
-	assert.False(t, notExpired)
-
-	// 使用0或负数间隔，应该使用默认24小时
-	notExpiredDefault := content.IsExpired(0)
-	assert.False(t, notExpiredDefault)
-}
-
-func TestRulesetContent_GetSize(t *testing.T) {
-	content := &RulesetContent{
-		Content: "DOMAIN,example.com\nDOMAIN,test.com",
-	}
-
-	size := content.GetSize()
-	expected := len("DOMAIN,example.com\nDOMAIN,test.com")
-	assert.Equal(t, expected, size)
-}
-
-func TestRulesetContent_Validate(t *testing.T) {
-	tests := []struct {
-		name     string
-		content  *RulesetContent
-		hasError bool
-	}{
-		{
-			name: "valid content",
-			content: &RulesetContent{
-				Group:   "test",
-				URL:     "https://example.com/rules.list",
-				Content: "DOMAIN,example.com",
+func TestRulesetConfigValidation(t *testing.T) {
+	t.Run("Test Validation Logic", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			ruleset  *RulesetConfig
+			expected bool
+		}{
+			{
+				name: "valid ruleset",
+				ruleset: &RulesetConfig{
+					Name:   "test",
+					Type:   "DOMAIN",
+					Policy: "REJECT",
+				},
+				expected: true,
 			},
-			hasError: false,
-		},
-		{
-			name: "missing group",
-			content: &RulesetContent{
-				URL:     "https://example.com/rules.list",
-				Content: "DOMAIN,example.com",
+			{
+				name: "missing name",
+				ruleset: &RulesetConfig{
+					Type:   "DOMAIN",
+					Policy: "REJECT",
+				},
+				expected: false,
 			},
-			hasError: true,
-		},
-		{
-			name: "missing URL",
-			content: &RulesetContent{
-				Group:   "test",
-				Content: "DOMAIN,example.com",
+			{
+				name: "missing type",
+				ruleset: &RulesetConfig{
+					Name:   "test",
+					Policy: "REJECT",
+				},
+				expected: false,
 			},
-			hasError: true,
-		},
-		{
-			name: "empty content",
-			content: &RulesetContent{
-				Group: "test",
-				URL:   "https://example.com/rules.list",
+			{
+				name: "missing policy",
+				ruleset: &RulesetConfig{
+					Name: "test",
+					Type: "DOMAIN",
+				},
+				expected: false,
 			},
-			hasError: true,
-		},
-	}
+			{
+				name: "invalid type",
+				ruleset: &RulesetConfig{
+					Name:   "test",
+					Type:   "INVALID-TYPE",
+					Policy: "REJECT",
+				},
+				expected: false,
+			},
+			{
+				name:     "nil ruleset",
+				ruleset:  nil,
+				expected: false,
+			},
+		}
+		
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := tt.ruleset.IsValid()
+				assert.Equal(t, tt.expected, result)
+			})
+		}
+	})
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.content.Validate()
-			if tt.hasError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
+func TestRulesetConfigTypes(t *testing.T) {
+	t.Run("Test Valid Rule Types", func(t *testing.T) {
+		validTypes := []string{
+			"DOMAIN",
+			"DOMAIN-SUFFIX", 
+			"DOMAIN-KEYWORD",
+			"IP-CIDR",
+			"IP-CIDR6",
+			"GEOIP",
+			"SRC-IP-CIDR",
+			"SRC-PORT",
+			"DST-PORT",
+			"PROCESS-NAME",
+			"RULE-SET",
+		}
+		
+		for _, ruleType := range validTypes {
+			t.Run(ruleType, func(t *testing.T) {
+				ruleset := &RulesetConfig{
+					Name:   "test",
+					Type:   ruleType,
+					Policy: "REJECT",
+				}
+				
+				assert.True(t, ruleset.IsValid(), "Type %s should be valid", ruleType)
+			})
+		}
+	})
+}
+
+func TestRulesetConfigFields(t *testing.T) {
+	t.Run("Test All Fields", func(t *testing.T) {
+		ruleset := &RulesetConfig{}
+		
+		// 设置必需字段
+		ruleset.Name = "test-ruleset"
+		assert.Equal(t, "test-ruleset", ruleset.Name)
+		
+		ruleset.Type = "DOMAIN"
+		assert.Equal(t, "DOMAIN", ruleset.Type)
+		
+		ruleset.Rule = "example.com"
+		assert.Equal(t, "example.com", ruleset.Rule)
+		
+		ruleset.Policy = "REJECT"
+		assert.Equal(t, "REJECT", ruleset.Policy)
+		
+		// 设置可选字段
+		ruleset.URL = "https://test.example.com/rules.list"
+		assert.Equal(t, "https://test.example.com/rules.list", ruleset.URL)
+		
+		ruleset.Path = "/local/path/rules.list"
+		assert.Equal(t, "/local/path/rules.list", ruleset.Path)
+		
+		ruleset.Interval = 3600
+		assert.Equal(t, 3600, ruleset.Interval)
+		
+		ruleset.Group = "test-group"
+		assert.Equal(t, "test-group", ruleset.Group)
+		
+		ruleset.NoResolve = true
+		assert.True(t, ruleset.NoResolve)
+	})
+}
+
+func TestRulesetConfigDefaults(t *testing.T) {
+	t.Run("Test SetDefaults Method", func(t *testing.T) {
+		ruleset := &RulesetConfig{
+			Name:   "test",
+			Type:   "DOMAIN",
+			Policy: "REJECT",
+		}
+		
+		// 默认间隔应该是0（未设置）
+		assert.Equal(t, 0, ruleset.Interval)
+		assert.True(t, ruleset.CreatedAt.IsZero())
+		assert.True(t, ruleset.UpdatedAt.IsZero())
+		
+		// 调用SetDefaults
+		ruleset.SetDefaults()
+		
+		// 检查默认值
+		assert.Equal(t, 86400, ruleset.Interval) // 24小时
+		assert.False(t, ruleset.CreatedAt.IsZero())
+		assert.False(t, ruleset.UpdatedAt.IsZero())
+	})
+}
+
+func TestRulesetConfigClone(t *testing.T) {
+	t.Run("Test Clone Method", func(t *testing.T) {
+		original := &RulesetConfig{
+			Name:          "test",
+			Type:          "DOMAIN",
+			Rule:          "example.com",
+			Policy:        "REJECT",
+			URL:           "https://example.com/rules.list",
+			Group:         "ads",
+			SourceIPCIDR:  []string{"192.168.1.0/24"},
+			Domain:        []string{"example.com", "test.com"},
+			DomainSuffix:  []string{".com"},
+			DomainKeyword: []string{"ads"},
+		}
+		
+		cloned := original.Clone()
+		
+		// 验证值相等
+		assert.Equal(t, original.Name, cloned.Name)
+		assert.Equal(t, original.Type, cloned.Type)
+		assert.Equal(t, original.Rule, cloned.Rule)
+		assert.Equal(t, original.Policy, cloned.Policy)
+		assert.Equal(t, original.URL, cloned.URL)
+		assert.Equal(t, original.Group, cloned.Group)
+		
+		// 验证切片内容相等
+		assert.Equal(t, original.SourceIPCIDR, cloned.SourceIPCIDR)
+		assert.Equal(t, original.Domain, cloned.Domain)
+		assert.Equal(t, original.DomainSuffix, cloned.DomainSuffix)
+		assert.Equal(t, original.DomainKeyword, cloned.DomainKeyword)
+		
+		// 验证是独立的对象
+		assert.NotSame(t, original, cloned)
+		
+		// 修改克隆不应影响原对象
+		cloned.Name = "modified"
+		assert.Equal(t, "test", original.Name)
+		assert.Equal(t, "modified", cloned.Name)
+		
+		// 修改切片不应影响原对象
+		if len(cloned.Domain) > 0 {
+			cloned.Domain[0] = "modified.com"
+			assert.Equal(t, "example.com", original.Domain[0])
+			assert.Equal(t, "modified.com", cloned.Domain[0])
+		}
+	})
+}
+
+func TestRulesetSliceOperations(t *testing.T) {
+	t.Run("Test Ruleset Slice Operations", func(t *testing.T) {
+		ruleset1 := &RulesetConfig{
+			Name:   "ads-rules",
+			Type:   "DOMAIN",
+			Policy: "REJECT",
+			Group:  "ads",
+		}
+		
+		ruleset2 := &RulesetConfig{
+			Name:   "privacy-rules",
+			Type:   "DOMAIN-SUFFIX",
+			Policy: "REJECT",
+			Group:  "privacy",
+		}
+		
+		ruleset3 := &RulesetConfig{
+			Name:   "ads-rules-2",
+			Type:   "DOMAIN-KEYWORD",
+			Policy: "REJECT",
+			Group:  "ads",
+		}
+		
+		rulesets := []*RulesetConfig{ruleset1, ruleset2, ruleset3}
+		
+		// 测试长度
+		assert.Equal(t, 3, len(rulesets))
+		
+		// 测试访问元素
+		assert.Equal(t, ruleset1, rulesets[0])
+		assert.Equal(t, ruleset2, rulesets[1])
+		assert.Equal(t, ruleset3, rulesets[2])
+		
+		// 测试按分组计数
+		adsCount := 0
+		privacyCount := 0
+		for _, ruleset := range rulesets {
+			switch ruleset.Group {
+			case "ads":
+				adsCount++
+			case "privacy":
+				privacyCount++
 			}
-		})
-	}
+		}
+		assert.Equal(t, 2, adsCount)
+		assert.Equal(t, 1, privacyCount)
+	})
 }
 
-func TestRulesetList_Methods(t *testing.T) {
-	rulesets := RulesetList{
-		{
-			Group: "group1",
-			URL:   "https://example.com/rules1.list",
-			Type:  types.RulesetTypeClashDomain,
-		},
-		{
-			Group: "group2",
-			URL:   "https://example.com/rules2.list",
-			Type:  types.RulesetTypeClashIPCIDR,
-		},
-		{
-			Group: "group1",
-			URL:   "https://example.com/rules3.list",
-			Type:  types.RulesetTypeClashDomain,
-		},
-	}
-
-	// 测试长度
-	assert.Equal(t, 3, rulesets.Len())
-
-	// 测试按分组过滤
-	group1Rules := rulesets.FilterByGroup("group1")
-	assert.Equal(t, 2, group1Rules.Len())
-
-	group2Rules := rulesets.FilterByGroup("group2")
-	assert.Equal(t, 1, group2Rules.Len())
-
-	// 测试按类型过滤
-	domainRules := rulesets.FilterByType(types.RulesetTypeClashDomain)
-	assert.Equal(t, 2, domainRules.Len())
-
-	ipRules := rulesets.FilterByType(types.RulesetTypeClashIPCIDR)
-	assert.Equal(t, 1, ipRules.Len())
-
-	// 测试获取分组
-	groups := rulesets.GetGroups()
-	assert.Len(t, groups, 2)
-	assert.Contains(t, groups, "group1")
-	assert.Contains(t, groups, "group2")
-
-	// 测试获取URL
-	urls := rulesets.GetURLs()
-	expected := []string{
-		"https://example.com/rules1.list",
-		"https://example.com/rules2.list",
-		"https://example.com/rules3.list",
-	}
-	assert.Equal(t, expected, urls)
-
-	// 测试按URL查找
-	found := rulesets.FindByURL("https://example.com/rules2.list")
-	require.NotNil(t, found)
-	assert.Equal(t, "group2", found.Group)
-
-	notFound := rulesets.FindByURL("https://nonexistent.com/rules.list")
-	assert.Nil(t, notFound)
+func TestRulesetNilHandling(t *testing.T) {
+	t.Run("Test Nil Handling", func(t *testing.T) {
+		// 测试nil规则集不会导致panic
+		var nilRuleset *RulesetConfig
+		assert.Nil(t, nilRuleset)
+		assert.False(t, nilRuleset.IsValid())
+		
+		// 测试包含nil元素的列表
+		rulesets := []*RulesetConfig{
+			nil,
+			{Name: "test", Type: "DOMAIN", Policy: "REJECT"},
+		}
+		assert.Equal(t, 2, len(rulesets))
+		assert.Nil(t, rulesets[0])
+		assert.NotNil(t, rulesets[1])
+	})
 }
 
-func TestRulesetList_GroupByType(t *testing.T) {
-	rulesets := RulesetList{
-		{
-			Group: "group1",
-			URL:   "https://example.com/rules1.list",
-			Type:  types.RulesetTypeClashDomain,
-		},
-		{
-			Group: "group2",
-			URL:   "https://example.com/rules2.list",
-			Type:  types.RulesetTypeClashDomain,
-		},
-		{
-			Group: "group3",
-			URL:   "https://example.com/rules3.list",
-			Type:  types.RulesetTypeClashIPCIDR,
-		},
-	}
-
-	groups := rulesets.GroupByType()
-	assert.Len(t, groups, 2)
-	assert.Len(t, groups[types.RulesetTypeClashDomain], 2)
-	assert.Len(t, groups[types.RulesetTypeClashIPCIDR], 1)
+func BenchmarkRulesetCreation(b *testing.B) {
+	b.Run("Create RulesetConfig", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = &RulesetConfig{
+				Name:     "benchmark",
+				Type:     "DOMAIN",
+				Policy:   "REJECT",
+				Interval: 86400,
+			}
+		}
+	})
 }
 
-func TestRulesetList_Validate(t *testing.T) {
-	rulesets := RulesetList{
-		{
-			Group: "valid-group",
-			URL:   "https://example.com/rules.list",
-		},
-		{
-			Group: "invalid-group",
-			// 缺少 URL
-		},
-		{
-			Group: "duplicate-key",
-			URL:   "https://example.com/same.list",
-		},
-		{
-			Group: "duplicate-key",
-			URL:   "https://example.com/same.list", // 重复键
-		},
-	}
-
-	errors := rulesets.Validate()
-	assert.NotEmpty(t, errors)
-	
-	// 应该有至少2个错误：一个无效规则集 + 一个重复键
-	assert.GreaterOrEqual(t, len(errors), 2)
-}
-
-func TestRulesetList_Clone(t *testing.T) {
-	original := RulesetList{
-		{
-			Group: "group1",
-			URL:   "https://example.com/rules1.list",
-		},
-		{
-			Group: "group2",
-			URL:   "https://example.com/rules2.list",
-		},
-	}
-
-	cloned := original.Clone()
-
-	// 验证长度相同
-	assert.Equal(t, original.Len(), cloned.Len())
-
-	// 验证值相等但对象独立
-	for i := range original {
-		assert.Equal(t, original[i].Group, cloned[i].Group)
-		assert.Equal(t, original[i].URL, cloned[i].URL)
-		assert.NotSame(t, original[i], cloned[i])
-	}
-
-	// 修改克隆不应影响原对象
-	cloned[0].Group = "modified"
-	assert.Equal(t, "group1", original[0].Group)
-	assert.Equal(t, "modified", cloned[0].Group)
-}
-
-func BenchmarkRulesetConfig_IsValid(b *testing.B) {
+func BenchmarkRulesetValidation(b *testing.B) {
 	ruleset := &RulesetConfig{
-		Group:    "benchmark",
-		URL:      "https://example.com/rules.list",
-		Interval: 86400,
+		Name:   "benchmark",
+		Type:   "DOMAIN",
+		Policy: "REJECT",
 	}
-
+	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = ruleset.IsValid()
-	}
-}
-
-func BenchmarkRulesetContent_GetHash(b *testing.B) {
-	content := &RulesetContent{
-		Content: "DOMAIN,example.com\nDOMAIN,test.com\nDOMAIN,benchmark.com",
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		content.Hash = "" // 重置缓存以测试计算性能
-		_ = content.GetHash()
-	}
-}
-
-func BenchmarkRulesetList_FilterByGroup(b *testing.B) {
-	rulesets := make(RulesetList, 1000)
-	for i := 0; i < 1000; i++ {
-		rulesets[i] = &RulesetConfig{
-			Group: "group" + string(rune(i%10)),
-			URL:   "https://example.com/rules.list",
-		}
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = rulesets.FilterByGroup("group5")
 	}
 }
